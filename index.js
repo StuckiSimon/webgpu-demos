@@ -52,6 +52,14 @@
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
   });
 
+  // Log
+
+  const logBufferSize = Float32Array.BYTES_PER_ELEMENT * 8 * 8;
+  const logBuffer = device.createBuffer({
+    size: logBufferSize,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+
   // Bind group layout and bind group
 
   const bindGroupLayout = device.createBindGroupLayout({
@@ -72,6 +80,13 @@
       },
       {
         binding: 2,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+          type: "storage",
+        },
+      },
+      {
+        binding: 3,
         visibility: GPUShaderStage.COMPUTE,
         buffer: {
           type: "storage",
@@ -101,6 +116,12 @@
           buffer: resultMatrixBuffer,
         },
       },
+      {
+        binding: 3,
+        resource: {
+          buffer: logBuffer,
+        },
+      },
     ],
   });
 
@@ -112,17 +133,25 @@
         size : vec2<f32>;
         numbers: array<f32>;
       };
+
+      [[block]] struct LogList {
+        numbers: array<f32>;
+      };
       
       [[group(0), binding(0)]] var<storage, read> firstMatrix : Matrix;
       [[group(0), binding(1)]] var<storage, read> secondMatrix : Matrix;
       [[group(0), binding(2)]] var<storage, write> resultMatrix : Matrix;
+      [[group(0), binding(3)]] var<storage, write> log : LogList;
       
       [[stage(compute), workgroup_size(8, 8)]]
       fn main([[builtin(global_invocation_id)]] global_id : vec3<u32>) {
+        let logIndex: u32 = global_id.x + (global_id.y * 8u);
+        log.numbers[logIndex] = 1.0;
         // Guard against out-of-bounds work group sizes.
         if (global_id.x >= u32(firstMatrix.size.x) || global_id.y >= u32(secondMatrix.size.y)) {
           return;
         }
+        log.numbers[logIndex] = 2.0;
 
         resultMatrix.size = vec2<f32>(firstMatrix.size.x, secondMatrix.size.y);
         
@@ -179,6 +208,21 @@
     resultMatrixBufferSize /* size */
   );
 
+  // Get a GPU buffer for reading in an unmapped state.
+  const gpuReadBufferLog = device.createBuffer({
+    size: logBufferSize,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  // Encode commands for copying buffer to buffer.
+  commandEncoder.copyBufferToBuffer(
+    logBuffer /* source buffer */,
+    0 /* source offset */,
+    gpuReadBufferLog /* destination buffer */,
+    0 /* destination offset */,
+    logBufferSize /* size */
+  );
+
   // Submit GPU commands.
   const gpuCommands = commandEncoder.finish();
   device.queue.submit([gpuCommands]);
@@ -187,4 +231,9 @@
   await gpuReadBuffer.mapAsync(GPUMapMode.READ);
   const arrayBuffer = gpuReadBuffer.getMappedRange();
   console.log(new Float32Array(arrayBuffer));
+
+  // Read buffer.
+  await gpuReadBufferLog.mapAsync(GPUMapMode.READ);
+  const arrayBufferLog = gpuReadBufferLog.getMappedRange();
+  console.log(new Float32Array(arrayBufferLog));
 })();
