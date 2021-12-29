@@ -4,7 +4,7 @@ struct VertexShaderOut {
   [[location(0)]] color: vec3<f32>;
 };
 
-[[block]] struct UniformBufferObject {
+struct UniformBufferObject {
   modelViewProj: mat4x4<f32>;
 };
 [[binding(0), group(0)]] var<uniform> uniforms: UniformBufferObject;
@@ -25,13 +25,33 @@ fn main([[location(0)]] inColor: vec3<f32>) -> [[location(0)]] vec4<f32> {
 }
 `;
 
+const getMarkTracker = () => {
+  let prevMark = null;
+  return (mark) => {
+    performance.mark(mark);
+    if (prevMark !== null) {
+      const measureMark = `${prevMark}-${mark}`;
+      performance.measure(measureMark, prevMark, mark);
+      const duration = performance.getEntriesByName(measureMark, "measure")[0]
+        .duration;
+      console.log(measureMark, duration);
+    }
+    prevMark = mark;
+  };
+};
+
 (async () => {
+  const perf = getMarkTracker();
+  perf("app.start");
   const adapter = await navigator.gpu.requestAdapter();
+  perf("app.adapter");
   const device = await adapter.requestDevice();
   const queue = device.queue;
+  perf("app.device");
 
   const canvas = document.getElementById("canvas");
   const context = canvas.getContext("webgpu");
+  perf("app.context");
 
   const canvasConfig = {
     device,
@@ -40,6 +60,7 @@ fn main([[location(0)]] inColor: vec3<f32>) -> [[location(0)]] vec4<f32> {
   };
 
   context.configure(canvasConfig);
+  perf("app.context.configure");
 
   const depthTextureDesc = {
     size: [canvas.width, canvas.height, 1],
@@ -50,9 +71,11 @@ fn main([[location(0)]] inColor: vec3<f32>) -> [[location(0)]] vec4<f32> {
 
   const depthTexture = device.createTexture(depthTextureDesc);
   const depthTextureView = depthTexture.createView();
+  perf("app.device.depthTexture");
 
   const colorTexture = context.getCurrentTexture();
   const colorTextureView = colorTexture.createView();
+  perf("app.context.colorTexture");
 
   const positions = new Float32Array([
     // v0
@@ -111,10 +134,12 @@ fn main([[location(0)]] inColor: vec3<f32>) -> [[location(0)]] vec4<f32> {
     uniformData,
     GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
   );
+  perf("app.device.buffers");
 
   const vertModule = device.createShaderModule({ code: vertexShader });
 
   const fragModule = device.createShaderModule({ code: fragmentShader });
+  perf("app.device.shaderModules");
 
   const positionAttribDesc = {
     shaderLocation: 0,
@@ -167,9 +192,11 @@ fn main([[location(0)]] inColor: vec3<f32>) -> [[location(0)]] vec4<f32> {
       },
     ],
   });
+  perf("app.device.bindGroup");
 
   const pipelineLayoutDesc = { bindGroupLayouts: [bindGroupLayout] };
   const layout = device.createPipelineLayout(pipelineLayoutDesc);
+  perf("app.device.pipelineLayout");
 
   const vertex = {
     module: vertModule,
@@ -202,6 +229,7 @@ fn main([[location(0)]] inColor: vec3<f32>) -> [[location(0)]] vec4<f32> {
   };
 
   const pipeline = device.createRenderPipeline(pipelineDesc);
+  perf("app.device.renderPipeline");
 
   const colorAttachment = {
     view: colorTextureView,
@@ -234,6 +262,14 @@ fn main([[location(0)]] inColor: vec3<f32>) -> [[location(0)]] vec4<f32> {
   passEncoder.setBindGroup(0, bindGroup);
   passEncoder.drawIndexed(3, 1);
   passEncoder.endPass();
+  perf("app.device.passEncoder");
 
   queue.submit([commandEncoder.finish()]);
+  // not implemented in FF
+  if (queue.onSubmittedWorkDone) {
+    await queue.onSubmittedWorkDone();
+  }
+  perf("app.device.submit");
+
+  perf("app.end");
 })();
