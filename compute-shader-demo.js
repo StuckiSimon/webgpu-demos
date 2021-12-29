@@ -1,16 +1,5 @@
 (async () => {
-  if (!navigator.gpu) {
-    console.log(
-      "WebGPU is not supported. Enable chrome://flags/#enable-unsafe-webgpu flag."
-    );
-    return;
-  }
-
   const adapter = await navigator.gpu.requestAdapter();
-  if (!adapter) {
-    console.log("Failed to get GPU adapter.");
-    return;
-  }
   const device = await adapter.requestDevice();
 
   // First Matrix
