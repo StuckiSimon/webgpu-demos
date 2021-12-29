@@ -129,29 +129,29 @@
 
   const shaderModule = device.createShaderModule({
     code: `
-      [[block]] struct Matrix {
+      struct Matrix {
         size : vec2<f32>;
         numbers: array<f32>;
       };
 
-      [[block]] struct LogList {
+      struct LogList {
         numbers: array<f32>;
       };
       
       [[group(0), binding(0)]] var<storage, read> firstMatrix : Matrix;
       [[group(0), binding(1)]] var<storage, read> secondMatrix : Matrix;
       [[group(0), binding(2)]] var<storage, write> resultMatrix : Matrix;
-      [[group(0), binding(3)]] var<storage, write> log : LogList;
+      [[group(0), binding(3)]] var<storage, write> logs : LogList;
       
       [[stage(compute), workgroup_size(8, 8)]]
       fn main([[builtin(global_invocation_id)]] global_id : vec3<u32>) {
         let logIndex: u32 = global_id.x + (global_id.y * 8u);
-        log.numbers[logIndex] = 1.0;
+        logs.numbers[logIndex] = 1.0;
         // Guard against out-of-bounds work group sizes.
         if (global_id.x >= u32(firstMatrix.size.x) || global_id.y >= u32(secondMatrix.size.y)) {
           return;
         }
-        log.numbers[logIndex] = 2.0;
+        logs.numbers[logIndex] = 2.0;
 
         resultMatrix.size = vec2<f32>(firstMatrix.size.x, secondMatrix.size.y);
         
